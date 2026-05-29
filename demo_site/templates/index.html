@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Tennis Betting Demo</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    <style>
+        [x-cloak] { display: none !important; }
+    </style>
+</head>
+<body class="bg-gray-900 text-gray-100 font-sans">
+    <nav class="bg-gray-800 border-b border-gray-700 p-4">
+        <div class="container mx-auto flex justify-between items-center">
+            <h1 class="text-2xl font-bold text-green-500">🎾 AI Tennis Demo</h1>
+            <div class="space-x-4">
+                <a href="/" class="hover:text-green-400">Live Odds</a>
+                <a href="/history" class="hover:text-green-400">Bet History</a>
+            </div>
+        </div>
+    </nav>
+
+    <main class="container mx-auto p-6" x-data="{ 
+        modalOpen: false, 
+        selectedMatch: {}, 
+        selection: '', 
+        odds: 0, 
+        amount: 10,
+        placeBet() {
+            let formData = new FormData();
+            formData.append('match_id', this.selectedMatch.id);
+            formData.append('selection', this.selection);
+            formData.append('odds', this.odds);
+            formData.append('amount', this.amount);
+            
+            fetch('/place_bet', {
+                method: 'POST',
+                body: formData
+            }).then(() => {
+                alert('Bet Placed!');
+                this.modalOpen = false;
+            });
+        }
+    }">
+        <div class="mb-8">
+            <h2 class="text-3xl font-bold mb-2">Active Tennis Markets</h2>
+            <p class="text-gray-400">Compare Market Odds with <span class="text-green-500 font-bold">AI True Odds</span>.</p>
+        </div>
+
+        <div class="grid grid-cols-1 gap-6">
+            {% for match in matches %}
+            <div class="bg-gray-800 border border-gray-700 rounded-xl p-6 flex flex-col md:flex-row justify-between items-center hover:border-green-500 transition duration-300">
+                <div class="flex-1">
+                    <div class="text-xs text-gray-500 uppercase font-bold mb-1">{{ match.tournament }} • {{ match.start_time }}</div>
+                    <div class="text-xl font-bold flex items-center">
+                        {{ match.player_a }} <span class="mx-2 text-gray-600 text-sm">vs</span> {{ match.player_b }}
+                    </div>
+                </div>
+
+                <div class="flex space-x-4 mt-4 md:mt-0">
+                    <!-- Player A Card -->
+                    <div class="text-center w-32">
+                        <div class="text-xs text-gray-400 mb-1">Market ({{ match.bookmaker }})</div>
+                        <button 
+                            @click="modalOpen = true; selectedMatch = {id: {{ match.id }}, name: '{{ match.player_a }}'}; selection = '1'; odds = {{ match.home_odds }}"
+                            class="w-full py-3 bg-gray-700 hover:bg-green-600 rounded-lg font-bold text-lg transition {% if match.value_a %}ring-2 ring-green-500{% endif %}">
+                            {{ match.home_odds }}
+                        </button>
+                        {% if match.ai_odds_a %}
+                        <div class="mt-2 text-xs">
+                            AI True: <span class="text-green-400 font-bold">{{ match.ai_odds_a }}</span>
+                        </div>
+                        {% endif %}
+                    </div>
+
+                    <!-- Player B Card -->
+                    <div class="text-center w-32">
+                        <div class="text-xs text-gray-400 mb-1">Market ({{ match.bookmaker }})</div>
+                        <button 
+                            @click="modalOpen = true; selectedMatch = {id: {{ match.id }}, name: '{{ match.player_b }}'}; selection = '2'; odds = {{ match.away_odds }}"
+                            class="w-full py-3 bg-gray-700 hover:bg-green-600 rounded-lg font-bold text-lg transition {% if match.value_b %}ring-2 ring-green-500{% endif %}">
+                            {{ match.away_odds }}
+                        </button>
+                        {% if match.ai_odds_b %}
+                        <div class="mt-2 text-xs">
+                            AI True: <span class="text-green-400 font-bold">{{ match.ai_odds_b }}</span>
+                        </div>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+
+        <!-- Bet Modal -->
+        <div x-show="modalOpen" x-cloak class="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center p-4 z-50">
+            <div class="bg-gray-800 border border-gray-700 rounded-2xl p-8 max-w-sm w-full" @click.away="modalOpen = false">
+                <h3 class="text-2xl font-bold mb-4">Place Demo Bet</h3>
+                <div class="mb-4">
+                    <div class="text-gray-400">Selection:</div>
+                    <div class="text-xl font-bold" x-text="selectedMatch.name"></div>
+                </div>
+                <div class="flex justify-between mb-6">
+                    <div>
+                        <div class="text-gray-400">Odds:</div>
+                        <div class="text-xl font-bold" x-text="odds"></div>
+                    </div>
+                    <div>
+                        <div class="text-gray-400">Stake ($):</div>
+                        <input type="number" x-model="amount" class="bg-gray-700 border-none rounded p-1 w-20 text-xl font-bold text-center">
+                    </div>
+                </div>
+                <button @click="placeBet()" class="w-full py-4 bg-green-500 hover:bg-green-600 rounded-xl font-bold text-xl text-black transition">
+                    CONFIRM BET
+                </button>
+            </div>
+        </div>
+    </main>
+</body>
+</html>

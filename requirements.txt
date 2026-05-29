@@ -1,0 +1,16 @@
+curl_cffi
+seleniumbase
+beautifulsoup4
+pandas
+rapidfuzz
+scikit-learn
+xgboost
+psycopg2-binary
+APScheduler
+streamlit
+requests
+python-dotenv
+aiolimiter
+python-telegram-bot
+playwright
+nest_asyncio
