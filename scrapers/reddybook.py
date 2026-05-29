@@ -135,11 +135,28 @@ class ReddyBookScraper(BaseScraper):
                 return []
 
     def get_matches(self):
-        try:
-            return asyncio.run(self._get_matches_async())
-        except Exception as e:
-            self.logger.error(f"Scraper failed: {e}")
-            return []
+        """Synchronous wrapper for async scraper with retries."""
+        @self.retry_on_failure(max_retries=3, delay=10)
+        def _execute():
+            try:
+                loop = asyncio.get_event_loop()
+                if loop.is_running():
+                    return asyncio.run_coroutine_threadsafe(
+                        self._get_matches_async(), loop
+                    ).result()
+                else:
+                    return asyncio.run(self._get_matches_async())
+            except Exception as e:
+                self.logger.error(f"Scraper failed: {e}")
+                raise
+
+        matches = _execute()
+        for m in matches:
+            if 'scraped_at' not in m:
+                m['scraped_at'] = datetime.datetime.now().isoformat()
+            if 'bookmaker' not in m:
+                m['bookmaker'] = self.bookmaker_name
+        return matches
 
     async def get_live_odds_async(self, player_a, player_b):
         """

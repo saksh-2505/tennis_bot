@@ -1,7 +1,7 @@
 from apscheduler.schedulers.blocking import BlockingScheduler
 from tennis_bot.database.db_manager import DatabaseManager
 from tennis_bot.scrapers.reddybook import ReddyBookScraper
-from tennis_bot.scrapers.pinnacle_scraper import PinnacleScraper
+from tennis_bot.scrapers.sharp_bookie import SharpBookieScraper
 from tennis_bot.scrapers.the_odds_api import TheOddsApiScraper
 from tennis_bot.scrapers.flashscore_scraper import FlashscoreScraper
 from tennis_bot.models.value_model import ValueModel
@@ -52,11 +52,59 @@ class Orchestrator:
 
         # Initialize scrapers
         self.scrapers = [
-            FlashscoreScraper(),
-            ReddyBookScraper(),
-            PinnacleScraper()
+            SharpBookieScraper(),
+            ReddyBookScraper()
         ]
 
+        # Optional professional API
+        if os.environ.get("THE_ODDS_API_KEY"):
+            self.scrapers.append(TheOddsApiScraper())
+
+    def discovery_job(self):
+        """
+        Discovers upcoming matches and populates the database.
+        """
+        logger.info("Starting Discovery Job...")
+        for scraper in self.scrapers:
+            try:
+                matches = scraper.get_matches()
+                for match in matches:
+                    # Normalize player names
+                    match['player_a'] = self.normalization.normalize_player(
+                        match['player_a']
+                    )
+                    match['player_b'] = self.normalization.normalize_player(
+                        match['player_b']
+                    )
+
+                    # Insert match metadata
+                    self.db.insert_match(match)
+
+                    # Handle multiple odds from API or single odds from UI
+                    if match.get('bookmaker_odds'):
+                        for bo in match['bookmaker_odds']:
+                            self.db.insert_odds({
+                                'player_a': match['player_a'],
+                                'player_b': match['player_b'],
+                                'start_time': match['start_time'],
+                                'bookmaker': bo['bookmaker'],
+                                'market': '1x2',
+                                'home_odds': bo['home_odds'],
+                                'away_odds': bo['away_odds']
+                            })
+                    elif match.get('home_odds') and match.get('away_odds'):
+                        self.db.insert_odds({
+                            'player_a': match['player_a'],
+                            'player_b': match['player_b'],
+                            'start_time': match['start_time'],
+                            'bookmaker': match.get('bookmaker', scraper.bookmaker_name),
+                            'market': '1x2',
+                            'home_odds': match['home_odds'],
+                            'away_odds': match['away_odds']
+                        })
+            except Exception as e:
+                logger.error(f"Discovery failed for {scraper.bookmaker_name}: {e}")
+        logger.info("Discovery Job completed.")
     def live_monitoring_job(self):
         """
         Continuously polls for live odds on matches starting soon.
@@ -87,12 +135,23 @@ class Orchestrator:
                         m['player_b'] = self.normalization.normalize_player(m['player_b'])
                         
                         self.db.insert_match(m)
-                        if m.get('home_odds') and m.get('away_odds'):
+                        if m.get('bookmaker_odds'):
+                            for bo in m['bookmaker_odds']:
+                                self.db.insert_odds({
+                                    'player_a': m['player_a'],
+                                    'player_b': m['player_b'],
+                                    'start_time': m['start_time'],
+                                    'bookmaker': bo['bookmaker'],
+                                    'market': '1x2',
+                                    'home_odds': bo['home_odds'],
+                                    'away_odds': bo['away_odds']
+                                })
+                        elif m.get('home_odds') and m.get('away_odds'):
                             self.db.insert_odds({
                                 'player_a': m['player_a'],
                                 'player_b': m['player_b'],
                                 'start_time': m['start_time'],
-                                'bookmaker': scraper.bookmaker_name,
+                                'bookmaker': m.get('bookmaker', scraper.bookmaker_name),
                                 'market': '1x2',
                                 'home_odds': m['home_odds'],
                                 'away_odds': m['away_odds']

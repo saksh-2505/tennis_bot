@@ -17,6 +17,7 @@ class TheOddsApiScraper(BaseScraper):
         self.api_key = api_key or os.environ.get("THE_ODDS_API_KEY")
         self.logger = logging.getLogger("scraper.TheOddsApi")
 
+    @self.retry_on_failure(max_retries=3, delay=2)
     def get_matches(self):
         """
         Fetches upcoming matches and odds from the API.
@@ -34,7 +35,7 @@ class TheOddsApiScraper(BaseScraper):
 
         try:
             self.logger.info("Fetching odds from The Odds API...")
-            response = requests.get(self.BASE_URL, params=params, timeout=10)
+            response = self.session.get(self.BASE_URL, params=params, timeout=10)
 
             if response.status_code != 200:
                 self.logger.error(
@@ -46,14 +47,18 @@ class TheOddsApiScraper(BaseScraper):
             matches = []
 
             for item in data:
-                # Map to project schema
+                # Map to standardized project schema
                 match = {
                     "player_a": item["home_team"],
                     "player_b": item["away_team"],
-                    "start_time": item["commence_time"],
+                    "start_time": item["commence_time"].replace('T', ' ').replace('Z', ''),
                     "tournament": item["sport_title"],
+                    "bookmaker": self.bookmaker_name,
                     "external_id": item["id"],
-                    "bookmaker_odds": []
+                    "scraped_at": datetime.datetime.now().isoformat(),
+                    "home_odds": 0.0,
+                    "away_odds": 0.0,
+                    "bookmaker_odds": [] # Extended info
                 }
 
                 # Extract odds from different bookmakers
@@ -78,7 +83,7 @@ class TheOddsApiScraper(BaseScraper):
                             "away_odds": away_odd
                         })
 
-                # Also provide a 'default' odds for the discovery job
+                # Set default odds to first available bookmaker
                 if match["bookmaker_odds"]:
                     match["home_odds"] = match["bookmaker_odds"][0]["home_odds"]
                     match["away_odds"] = match["bookmaker_odds"][0]["away_odds"]
@@ -92,7 +97,7 @@ class TheOddsApiScraper(BaseScraper):
 
         except Exception as e:
             self.logger.error(f"The Odds API failed: {e}")
-            return []
+            raise # Let decorator handle retry
 
     def get_odds(self, external_id):
         # API fetches everything in get_matches
