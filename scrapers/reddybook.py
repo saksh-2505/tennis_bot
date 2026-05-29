@@ -141,7 +141,58 @@ class ReddyBookScraper(BaseScraper):
             self.logger.error(f"Scraper failed: {e}")
             return []
 
+    async def get_live_odds_async(self, player_a, player_b):
+        """
+        Specific method to get live odds for a match by drilling down.
+        """
+        async with async_playwright() as p:
+            browser = await p.chromium.launch(headless=True)
+            context = await browser.new_context(viewport={'width': 1280, 'height': 720})
+            page = await context.new_page()
+            
+            try:
+                await page.goto(f"{self.BASE_URL}/sports/2", wait_until="networkidle")
+                await page.wait_for_selector('.bet-table-row', timeout=10000)
+                
+                # Search for match row
+                search_term = f"{player_a}"
+                rows = await page.query_selector_all('.bet-table-row')
+                target_row = None
+                for row in rows:
+                    text = await row.inner_text()
+                    if player_a.lower() in text.lower() or player_b.lower() in text.lower():
+                        target_row = row
+                        break
+                
+                if not target_row:
+                    await browser.close()
+                    return None
+                
+                # Click to go to match page for deep odds
+                await target_row.click()
+                await page.wait_for_selector('.market-title', timeout=10000)
+                
+                # Extract Match Winner Odds from the specific page
+                # Reddybook usually shows Match Winner as the first market
+                odds = {'home': 0.0, 'away': 0.0}
+                back_btns = await page.query_selector_all('.back')
+                if len(back_btns) >= 2:
+                    h_text = await back_btns[0].inner_text()
+                    a_text = await back_btns[1].inner_text()
+                    try:
+                        odds['home'] = float(h_text.split('\n')[0])
+                        odds['away'] = float(a_text.split('\n')[0])
+                    except: pass
+                
+                await browser.close()
+                return odds
+            except Exception as e:
+                self.logger.error(f"Live odds scrape failed: {e}")
+                await browser.close()
+                return None
+
     def get_odds(self, match_id):
+        # Implementation to be used by orchestrator
         return None
 
 

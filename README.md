@@ -45,3 +45,19 @@ streamlit run tennis_bot/dashboard/app.py
 
 ---
 *Developed for Saksham Rai's Second Brain.*
+
+## 🚀 New: Autonomous Live Betting Mode
+The bot now supports fully autonomous betting on **ReddyBook** using an agentic execution engine.
+
+#### Key Features:
+- **Agentic Betting:** Uses `browser-use` + GPT-4o to navigate ReddyBook, handle popups, and place bets reliably.
+- **Continuous Monitoring:** Real-time odds polling every 1-5 minutes for upcoming matches.
+- **Scaling Positions:** Supports multiple bets on the same match if value persists.
+- **Proof of Execution:** Captures screenshots of bet slips for every action.
+
+#### How to Run Live:
+1. Ensure your `.env` has `REDDYBOOK_USER`, `REDDYBOOK_PASS`, and `OPENAI_API_KEY`.
+2. Run the live script:
+   ```bash
+   python tennis_bot/run_live.py
+   ```
