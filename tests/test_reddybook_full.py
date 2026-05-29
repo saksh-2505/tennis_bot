@@ -8,6 +8,9 @@ from dotenv import load_dotenv
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger("test.reddybook")
 
+import pytest
+
+@pytest.mark.asyncio
 async def test_full_reddybook_flow():
     load_dotenv()
     username = os.environ.get("REDDYBOOK_USER")

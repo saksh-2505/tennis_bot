@@ -2,6 +2,7 @@ import pandas as pd
 import requests
 import os
 import logging
+import time
 from datetime import datetime
 
 logger = logging.getLogger("models.data_loader")
@@ -36,6 +37,13 @@ class TennisDataLoader:
         url = self.BASE_URLS[circuit].format(year=year)
         filename = f"{circuit}_{year}.csv"
         filepath = os.path.join(self.DATA_DIR, filename)
+
+        # Skip if updated in last 24 hours
+        if os.path.exists(filepath):
+            mtime = os.path.getmtime(filepath)
+            if (time.time() - mtime) < 86400:
+                logger.info(f"Skipping {circuit} {year} - recently updated.")
+                return True
 
         logger.info(f"Downloading {circuit} data for {year}...")
         try:

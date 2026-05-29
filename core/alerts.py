@@ -57,6 +57,26 @@ class TelegramAlerter:
             logger.error(f"Failed to send Telegram alert: {e}")
             return False
 
+    def send_status(self, text, title="ℹ️ **System Status**"):
+        """Sends a general status or notification message."""
+        if not self.enabled:
+            return False
+
+        message = f"{title}\n\n{text}"
+        url = f"https://api.telegram.org/bot{self.token}/sendMessage"
+        payload = {
+            "chat_id": self.chat_id,
+            "text": message,
+            "parse_mode": "Markdown"
+        }
+
+        try:
+            requests.post(url, json=payload).raise_for_status()
+            return True
+        except Exception as e:
+            logger.error(f"Failed to send status: {e}")
+            return False
+
 
 if __name__ == "__main__":
     # Test alert

@@ -29,6 +29,40 @@ class BaseScraper(ABC):
         sleep_time = random.uniform(min_sec, max_sec)
         await asyncio.sleep(sleep_time)
 
+    def retry_on_failure(self, max_retries=3, delay=5):
+        """Decorator for retrying fragile scraping methods."""
+        def decorator(func):
+            import functools
+            import asyncio
+            if asyncio.iscoroutinefunction(func):
+                @functools.wraps(func)
+                async def wrapper(*args, **kwargs):
+                    for i in range(max_retries):
+                        try:
+                            return await func(*args, **kwargs)
+                        except Exception as e:
+                            self.logger.warning(f"Attempt {i+1} failed for {func.__name__}: {e}")
+                            if i < max_retries - 1:
+                                await asyncio.sleep(delay * (i + 1))
+                            else:
+                                raise
+                return wrapper
+            else:
+                @functools.wraps(func)
+                def wrapper(*args, **kwargs):
+                    for i in range(max_retries):
+                        try:
+                            return func(*args, **kwargs)
+                        except Exception as e:
+                            self.logger.warning(f"Attempt {i+1} failed for {func.__name__}: {e}")
+                            if i < max_retries - 1:
+                                import time
+                                time.sleep(delay * (i + 1))
+                            else:
+                                raise
+                return wrapper
+        return decorator
+
     @abstractmethod
     def get_matches(self):
         """

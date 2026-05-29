@@ -96,17 +96,54 @@ class ValueModel:
         kelly = (prob * b - q) / b
         return max(0, kelly * fraction)
 
+    def calculate_no_vig_prob(self, home_odds, away_odds):
+        """Calculates fair probability by removing the overround (vig)."""
+        if home_odds <= 1.0 or away_odds <= 1.0:
+            return None
+        overround = (1/home_odds) + (1/away_odds)
+        fair_h = (1/home_odds) / overround
+        return fair_h
+
     def analyze_match(self, soft_odds_list, player_a=None, player_b=None, surface="Hard", match_id=None):
         """
         Ensemble analysis supporting BACK and LAY.
+        Incorporates both Fundamental ML and Sharp Market No-Vig baselines.
         """
-        true_h = self.predict_win_prob(player_a, player_b, surface) if player_a and player_b else None
+        # 1. Fundamental ML Probability
+        fundamental_prob = self.predict_win_prob(player_a, player_b, surface) if player_a and player_b else None
+        
+        # 2. Sharp Market Probability (No-Vig)
+        sharp_prob = None
+        sharps = [o for o in soft_odds_list if o['bookmaker'] in ['Pinnacle', 'Betfair', 'Flashscore']]
+        if sharps:
+            # Use the average of available sharps
+            no_vig_probs = []
+            for s in sharps:
+                prob = self.calculate_no_vig_prob(s['home'], s['away'])
+                if prob: no_vig_probs.append(prob)
+            if no_vig_probs:
+                sharp_prob = sum(no_vig_probs) / len(no_vig_probs)
+
+        # 3. Unified "True Probability" (Weighting fundamental vs market)
+        # If match is starting soon, market wisdom (sharp_prob) is weighted more.
+        true_h = None
+        if fundamental_prob is not None and sharp_prob is not None:
+            true_h = (fundamental_prob * 0.4) + (sharp_prob * 0.6)
+        elif fundamental_prob is not None:
+            true_h = fundamental_prob
+        elif sharp_prob is not None:
+            true_h = sharp_prob
+        
         if true_h is None: return []
 
         true_a = 1 - true_h
         opportunities = []
 
         for soft in soft_odds_list:
+            # Skip sharps for betting execution (we bet on soft books)
+            if soft['bookmaker'] in ['Pinnacle', 'Betfair', 'Flashscore']:
+                continue
+
             # 1. Moneyline BACK Analysis
             ev_h_back = self.find_ev(true_h, soft['home'])
             ev_a_back = self.find_ev(true_a, soft['away'])

@@ -142,18 +142,22 @@ class PinnacleScraper(BaseScraper):
                 return []
 
     def get_matches(self):
-        """Synchronous wrapper for async scraper."""
-        try:
-            loop = asyncio.get_event_loop()
-            if loop.is_running():
-                return asyncio.run_coroutine_threadsafe(
-                    self._get_matches_async(), loop
-                ).result()
-            else:
-                return asyncio.run(self._get_matches_async())
-        except Exception as e:
-            self.logger.error(f"Scraper failed: {e}")
-            return []
+        """Synchronous wrapper for async scraper with retries."""
+        @self.retry_on_failure(max_retries=3, delay=10)
+        def _execute():
+            try:
+                loop = asyncio.get_event_loop()
+                if loop.is_running():
+                    return asyncio.run_coroutine_threadsafe(
+                        self._get_matches_async(), loop
+                    ).result()
+                else:
+                    return asyncio.run(self._get_matches_async())
+            except Exception as e:
+                self.logger.error(f"Scraper failed: {e}")
+                raise
+
+        return _execute()
 
     def get_odds(self, match_id):
         """In this implementation, odds are fetched during get_matches."""

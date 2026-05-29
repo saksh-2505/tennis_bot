@@ -1,6 +1,7 @@
 from apscheduler.schedulers.blocking import BlockingScheduler
 from tennis_bot.database.db_manager import DatabaseManager
 from tennis_bot.scrapers.reddybook import ReddyBookScraper
+from tennis_bot.scrapers.pinnacle_scraper import PinnacleScraper
 from tennis_bot.scrapers.the_odds_api import TheOddsApiScraper
 from tennis_bot.scrapers.flashscore_scraper import FlashscoreScraper
 from tennis_bot.models.value_model import ValueModel
@@ -52,49 +53,77 @@ class Orchestrator:
         # Initialize scrapers
         self.scrapers = [
             FlashscoreScraper(),
-            ReddyBookScraper()
+            ReddyBookScraper(),
+            PinnacleScraper()
         ]
 
     def live_monitoring_job(self):
         """
-        Continuously polls for live odds on matches we've identified as potentially valuable.
+        Continuously polls for live odds on matches starting soon.
         """
         logger.info("📡 Starting Continuous Live Monitoring Loop...")
-        upcoming = self.db.get_upcoming_matches()
-        
-        # We only monitor matches starting soon (e.g., next 2 hours) or already started
-        now = datetime.datetime.now()
-        to_monitor = []
-        for match in upcoming:
-            start = datetime.datetime.strptime(match['start_time'], "%Y-%m-%d %H:%M:%S")
-            if (start - now).total_seconds() < 7200: # 2 hours
-                to_monitor.append(match)
-
-        for match in to_monitor:
-            logger.info(f"🔍 Monitoring: {match['player_a']} vs {match['player_b']}")
+        try:
+            upcoming = self.db.get_upcoming_matches()
+            now = datetime.datetime.now()
             
-            # Use ReddyBookScraper to get FRESH live odds
-            rb_scraper = next((s for s in self.scrapers if isinstance(s, ReddyBookScraper)), None)
-            if rb_scraper:
-                live_odds = asyncio.run(rb_scraper.get_live_odds_async(match['player_a'], match['player_b']))
-                if live_odds and live_odds['home'] > 1.0:
-                    # Insert fresh odds into DB
-                    self.db.insert_odds({
-                        'player_a': match['player_a'],
-                        'player_b': match['player_b'],
-                        'start_time': match['start_time'],
-                        'bookmaker': 'ReddyBook',
-                        'market': '1x2',
-                        'home_odds': live_odds['home'],
-                        'away_odds': live_odds['away']
-                    })
-                    
-                    # Immediate Value Detection
-                    self.process_value_for_match(match, [{
-                        'bookmaker': 'ReddyBook',
-                        'home': live_odds['home'],
-                        'away': live_odds['away']
-                    }])
+            # Monitor matches starting in the next 3 hours or already live
+            to_monitor = [
+                m for m in upcoming 
+                if (datetime.datetime.strptime(m['start_time'], "%Y-%m-%d %H:%M:%S") - now).total_seconds() < 10800
+            ]
+
+            if not to_monitor:
+                logger.info("No active or upcoming matches to monitor right now.")
+                return
+
+            # Get fresh data from ALL scrapers to have a complete market picture
+            for scraper in self.scrapers:
+                try:
+                    logger.info(f"Polling {scraper.bookmaker_name} for fresh live odds...")
+                    matches = scraper.get_matches()
+                    for m in matches:
+                        # Normalize and Update DB
+                        m['player_a'] = self.normalization.normalize_player(m['player_a'])
+                        m['player_b'] = self.normalization.normalize_player(m['player_b'])
+                        
+                        self.db.insert_match(m)
+                        if m.get('home_odds') and m.get('away_odds'):
+                            self.db.insert_odds({
+                                'player_a': m['player_a'],
+                                'player_b': m['player_b'],
+                                'start_time': m['start_time'],
+                                'bookmaker': scraper.bookmaker_name,
+                                'market': '1x2',
+                                'home_odds': m['home_odds'],
+                                'away_odds': m['away_odds']
+                            })
+                except Exception as e:
+                    logger.error(f"Live poll failed for {scraper.bookmaker_name}: {e}")
+
+            # Re-check value for monitored matches
+            for match in to_monitor:
+                self.value_detection_job_for_single_match(match)
+
+        except Exception as e:
+            logger.error(f"Critical error in live monitoring loop: {e}")
+
+    def value_detection_job_for_single_match(self, match):
+        """Analyze a specific match with the latest data from all bookmakers."""
+        conn = self.db.get_connection()
+        # Get latest odds from all sources for this match in last hour
+        query = """
+            SELECT bookmaker, home_odds, away_odds 
+            FROM odds_history 
+            WHERE match_id = ? 
+            AND timestamp > datetime('now', '-1 hour')
+        """
+        cursor = conn.execute(query, (match['id'],))
+        all_odds = cursor.fetchall()
+        conn.close()
+
+        if all_odds:
+            odds_list = [{'bookmaker': s['bookmaker'], 'home': s['home_odds'], 'away': s['away_odds']} for s in all_odds]
+            self.process_value_for_match(match, odds_list)
 
     def process_value_for_match(self, match, odds_list):
         """Analyze a specific match and execute bets if value is found."""
@@ -200,6 +229,14 @@ class Orchestrator:
 
         mode = "SIMULATION" if self.is_simulation else "LIVE"
         logger.info(f"Orchestrator started in {mode} Mode. Live loop active every 5m.")
+        
+        # Notify Telegram of restart
+        self.alerter.send_status(
+            f"Orchestrator initialized in **{mode}** mode.\n"
+            f"Threshold: {self.bet_threshold:.1%}\n"
+            f"Scrapers Active: {', '.join([s.bookmaker_name for s in self.scrapers])}",
+            title="🚀 **Tennis Bot Started**"
+        )
         try:
             self.scheduler.start()
         except (KeyboardInterrupt, SystemExit):

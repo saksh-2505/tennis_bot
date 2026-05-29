@@ -15,10 +15,10 @@ def sync_now():
     print("📡 Discovering matches and odds...")
     orch.discovery_job()
 
-    print("📊 Updating live odds...")
-    orch.odds_update_job()
+    print("📡 Running live monitoring (odds refresh)...")
+    orch.live_monitoring_job()
 
-    print("🧠 Running value detection...")
+    print("🧠 Running batch value detection...")
     orch.value_detection_job()
 
     print("✅ Sync Complete!")

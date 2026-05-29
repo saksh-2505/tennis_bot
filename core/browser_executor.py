@@ -34,23 +34,22 @@ class BrowserExecutionEngine(ExecutionEngine):
         mode_str = "PLACE a real bet" if confirm else "PREPARE a bet slip (simulated)"
         
         task = (
-            f"Go to {self.base_url}. "
-            f"Login using username '{self.username}' and password '{self.password}'. "
-            f"Handle any security or announcement popups if they appear. "
-            f"Navigate to the Tennis section. "
-            f"Find the match '{match_name}'. "
-            f"If the match is found, click it to open the market. "
-            f"Find the 'Match Winner' market. "
-            f"Look for selection '{selection}' (1 for first player, 2 for second). "
-            f"Verify the 'Back' odds are close to {odds}. "
-            f"Click the 'Back' button for that selection to open the bet slip. "
-            f"Enter the stake '{stake}' into the amount input. "
+            f"Navigate to {self.base_url}. "
+            f"Log in with username '{self.username}' and password '{self.password}'. "
+            f"If you encounter any announcement popups, 'Change Password' prompts, or security alerts, close them or click 'Cancel/Stay on page' to bypass. "
+            f"Go to the 'Tennis' category (ID 2). "
+            f"Search for the match involving '{match_name}'. "
+            f"Once in the match market, locate the 'Match Winner' market. "
+            f"For selection '{selection}' (1 for first player, 2 for second), click the 'Back' button (usually blue). "
+            f"Verify the current 'Back' odds on the slip are approximately {odds} (within 5% range). "
+            f"If the odds have dropped significantly, stop and report. "
+            f"Enter the stake amount: '{stake}'. "
         )
 
         if confirm:
-            task += "Click the 'Place Bet' or 'Confirm' button to finish."
+            task += "Click the 'Place Bet' button. After clicking, wait for a success confirmation message or for the balance to update."
         else:
-            task += "Take a screenshot of the filled bet slip and stop."
+            task += "Take a screenshot of the prepared bet slip for verification and then stop."
 
         logger.info(f"🤖 Starting Agentic Betting Flow: {match_name} ({selection}) @ {odds}")
         

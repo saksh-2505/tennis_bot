@@ -10,7 +10,7 @@ class NormalizationEngine:
     Supports persistent storage in SQLite.
     """
 
-    def __init__(self, db_path="tennis_bot.db", threshold=95):
+    def __init__(self, db_path="tennis_bot.db", threshold=85):
         self.db_path = db_path
         self.threshold = threshold
         self.logger = logging.getLogger("core.normalization")
